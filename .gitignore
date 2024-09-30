@@ -2,7 +2,7 @@
 venv/
 
 # Ignore the .env file in the backend folder (contains sensitive information)
-backend/.env
+backend/crud_project/.env
 
 # Ignore Python bytecode files
 *.pyc
@@ -13,7 +13,7 @@ backend/crud_project/settings.py
 
 # Ignore Docker-related files (optional if you don't want to track them)
 docker-compose.yml
-backend/Dockerfile
+backend/crud_project/Dockerfile
 
 # Ignore Kubernetes config files in the crud_app_k8s_config folder
 crud_app_k8s_config/*.yaml

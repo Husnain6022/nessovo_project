@@ -56,3 +56,5 @@ backend/crud_project/crud_project/settings.py
 
 # Ignore Docker-related files
 backend/crud_project/Dockerfile
+
+.env

@@ -1,0 +1,48 @@
+# Ignore Python virtual environment
+venv/
+
+# Ignore the .env file in the backend folder (contains sensitive information)
+backend/.env
+
+# Ignore Python bytecode files
+*.pyc
+__pycache__/
+
+# Ignore the Django secret key and sensitive settings
+backend/crud_project/settings.py
+
+# Ignore Docker-related files (optional if you don't want to track them)
+docker-compose.yml
+backend/Dockerfile
+
+# Ignore Kubernetes config files in the crud_app_k8s_config folder
+crud_app_k8s_config/*.yaml
+
+# Ignore logs
+*.log
+
+# Ignore Django database file (if using SQLite for development)
+*.sqlite3
+
+# Ignore IDE/editor configurations
+.idea/
+.vscode/
+
+# Ignore all yaml files in Kubernetes config folder
+crud_app_k8s_config/*.yml
+
+# Optional: Ignore migrations if you don't want to track them
+*/migrations/*
+
+# Ignore compiled translation files
+*.mo
+
+# Ignore cache and temporary files
+*.cache
+*.pot
+
+# Ignore local config files or temp files created by the OS or editors
+*.local
+*.swp
+.DS_Store
+Thumbs.db

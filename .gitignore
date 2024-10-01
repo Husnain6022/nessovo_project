@@ -12,7 +12,7 @@ __pycache__/
 
 # Ignore Docker-related files (optional if you don't want to track them)
 docker-compose.yml
-backend/crud_project/Dockerfile
+#backend/crud_project/Dockerfile
 # Ignore the .env file in the backend folder
 backend/crud_project/.env
 # Ignore the Django secret key and sensitive settings

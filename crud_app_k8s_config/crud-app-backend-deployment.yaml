@@ -1,0 +1,108 @@
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: crud-app-backend-deployment
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: crud-app-backend
+#  template:
+#    metadata:
+#      labels:
+#        app: crud-app-backend
+#    spec:
+#      containers:
+#      - name: crud-app-backend
+#        image: husnain844/crud_app-backend:latest
+#        imagePullPolicy: Always
+#        ports:
+#        - containerPort: 8000
+#        env:
+#        - name: MONGO_URI
+#          value: mongodb://mongo-service:27017/crud_app_db
+#
+#        - name: USER_NAME
+#          valueFrom:
+#            secretKeyRef:
+#              name: mongo-secret
+#              key: mongo-user
+#
+#        - name: USER_PWD
+#          valueFrom:
+#            secretKeyRef:
+#              name: mongo-secret
+#              key: mongo-password
+#
+#        - name: DB_URL
+#          valueFrom:
+#            configMapKeyRef:
+#              name: mongo-config
+#              key: mongo-url
+#---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: crud-app-backend-service
+#spec:
+#  type: NodePort
+#  selector:
+#    app: crud-app-backend
+#  ports:
+#  - protocol: TCP
+#    port: 8000
+#    targetPort: 8000
+#    nodePort: 30100  # Specify a NodePort for local testing
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crud-app-backend-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: crud-app-backend
+  template:
+    metadata:
+      labels:
+        app: crud-app-backend
+    spec:
+      containers:
+      - name: crud-app-backend
+        image: husnain844/crud_app-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MONGO_URI
+          value: mongodb://crud-app-mongodb-0.mongo-service:27017,crud-app-mongodb-1.mongo-service:27017,crud-app-mongodb-2.mongo-service:27017/crud_app_db?replicaSet=rs0
+        - name: USER_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret
+              key: mongo-user
+        - name: USER_PWD
+          valueFrom:
+            secretKeyRef:
+              name: mongo-secret
+              key: mongo-password
+        - name: DB_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mongo-config
+              key: mongo-url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crud-app-backend-service
+spec:
+  type: NodePort
+  selector:
+    app: crud-app-backend
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+    nodePort: 30100  # Specify a NodePort for local testing

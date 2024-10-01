@@ -1,0 +1,18 @@
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+#  name: app-config
+#data:
+#  MONGO_URI: "mongodb://crud-app-mongodb:27017/crud_app_db"
+#  DJANGO_SETTINGS_MODULE: "crud_project.settings"
+#  DEBUG: "False"
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-config
+data:
+  mongo-url: mongo-service
+#  DJANGO_SETTINGS_MODULE: "crud_project.settings"
+#  DEBUG: "False"

@@ -66,22 +66,46 @@ jobs:
           kubectl get pods
 
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 100  # Increase the sleep time to 120 seconds
+        run: sleep 20  # Increase the sleep time to 120 seconds
 
+      - name: Check MongoDB Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Wait for MongoDB Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check MongoDB Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Wait for MongoDB Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check MongoDB Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Wait for MongoDB Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check MongoDB Pod Status
+        run: |
+          kubectl get pods
 
       - name: Initialize MongoDB Replica Set
         run: |
           kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.initiate({
             _id: "rs0",
             members: [
-              { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017" },
-              { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017" },
-              { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017" }
+              { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017", priority: 2 },
+              { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017", priority: 1 },
+              { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
             ]
-          })'
+          }), {force:true}'
 
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 30  # Adjust the sleep time as needed
+        run: sleep 20  # Adjust the sleep time as needed
 
       - name: check status of replica set
         run: |
@@ -89,10 +113,11 @@ jobs:
 
       - name: Create MongoDB User
         run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval "use admin;
+            kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+            use admin;
             db.createUser({
-              user: '${{ env.MONGO_USER }}',
-              pwd: '${{ env.MONGO_PASSWORD }}',
+              user: '${{ secrets.MONGO_USER }}',
+              pwd: '${{ secrets.MONGO_PASSWORD }}',
               roles: [{ role: 'readWrite', db: 'crud_app_db' }]
             });"
 

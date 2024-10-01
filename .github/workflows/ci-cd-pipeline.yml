@@ -104,24 +104,56 @@ jobs:
         run: |
           openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
 
-      - name: Create SSL Certificate Secret
-        run: |
-          kubectl create secret tls ingress-tls --key mykey.key --cert mycert.crt
-
       - name: Deploy Ingress Controller
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 
-      - name: Wait for Ingress Controller to install
-        run: sleep 60  # Adjust the sleep time as needed
+      - name: Wait for Ingress Controller to be ready
+        run: |
+            kubectl wait --namespace ingress-nginx \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/component=controller \
+              --timeout=300s
 
       - name: Configure Ingress
         run: |
           kubectl apply -f crud_app_k8s_config/ingress.yaml
 
+      - name: Wait for all pods to be ready
+        run: |
+          kubectl wait --for=condition=ready pod --all --timeout=300s
+
+      - name: Get all resources
+        run: |
+          echo "Pods:"
+          kubectl get pods -A
+          echo "Services:"
+          kubectl get services -A
+          echo "Ingress:"
+          kubectl get ingress -A
+
+      - name: Wait for services to stabilize
+        run: sleep 60  # Adjust time as needed
+
+      - name: Test Backend Service directly
+        run: |
+          kubectl port-forward service/crud-app-backend-service 8000:8000 &
+          sleep 5
+          curl http://localhost:8000/healthcheck
+
       - name: Test Ingress Setup
         run: |
-          curl http://127.0.0.1/healthcheck
+          # Wait for ingress to get an IP
+          until [ -n "$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" ]; do
+            echo "Waiting for ingress to get an IP..."
+            sleep 5
+          done
+          
+          # Get the ingress IP
+          INGRESS_IP=$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          # Test the endpoint
+          curl -H "Host: crud-app.local" http://$INGRESS_IP/healthcheck
 
 #name: CI/CD Pipeline
 #

@@ -112,6 +112,9 @@ jobs:
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 
+      - name: Wait for Ingress Controller to install
+        run: sleep 60  # Adjust the sleep time as needed
+
       - name: Configure Ingress
         run: |
           kubectl apply -f crud_app_k8s_config/ingress.yaml

@@ -8,15 +8,18 @@ crud_app\backend\crud_project\.env
 *.pyc
 __pycache__/
 
-# Ignore the Django secret key and sensitive settings
-backend/crud_project/settings.py
+
 
 # Ignore Docker-related files (optional if you don't want to track them)
 docker-compose.yml
-crud_app\backend/crud_project/Dockerfile
-
+backend/crud_project/Dockerfile
+# Ignore the .env file in the backend folder
+backend/crud_project/.env
+# Ignore the Django secret key and sensitive settings
+backend/crud_project/crud_project/settings.py
 # Ignore Kubernetes config files in the crud_app_k8s_config folder
 crud_app_k8s_config/*.yaml
+
 
 # Ignore logs
 *.log
@@ -48,13 +51,5 @@ crud_app_k8s_config/*.yml
 Thumbs.db
 
 
-# Ignore the .env file in the backend folder
-backend/crud_project/.env
 
-# Ignore the Django secret key and sensitive settings
-backend/crud_project/crud_project/settings.py
 
-# Ignore Docker-related files
-backend/crud_project/Dockerfile
-
-.env

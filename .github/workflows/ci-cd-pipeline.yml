@@ -102,7 +102,7 @@ jobs:
               { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017", priority: 1 },
               { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
             ]
-          }), {force:true}'
+          }, {force:true})'
 
       - name: Wait for MongoDB Replica Set to stabilize
         run: sleep 20  # Adjust the sleep time as needed
@@ -143,17 +143,47 @@ jobs:
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
 
-      - name: Wait for All Backend Pods to be Running
+      - name: Check Backend Pod Status
         run: |
-          echo "Waiting for all backend pods to be in the running state..."
-          # Wait for the deployment to be available
-          kubectl wait --for=condition=available --timeout=60s deployment/crud-app-backend
-          
-          # Wait for all pods to be in the "Running" state
-          kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=60s
+          kubectl get pods
 
-      - name: Wait for services to stabilize
-        run: sleep 5  # Adjust time as needed
+      - name: Wait for Backend Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check Backend Pod Status
+        run: |
+          kubectl get pods
+      
+            - name: Deploy Backend
+        run: |
+            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+
+      - name: Check Backend Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Wait for Backend Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check Backend Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Deploy Backend
+        run: |
+            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+
+      - name: Check Backend Pod Status
+        run: |
+          kubectl get pods
+
+      - name: Wait for Backend Replica Set to stabilize
+        run: sleep 20  # Increase the sleep time to 120 seconds
+
+      - name: Check Backend Pod Status
+        run: |
+          kubectl get pods
+      
 
       - name: Check Backend Logs
         run: |

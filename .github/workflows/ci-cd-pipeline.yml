@@ -95,10 +95,23 @@ jobs:
               roles: [{ role: 'readWrite', db: 'crud_app_db' }]
             });"
       
+      - name: Wait for services to stabilize
+        run: sleep 20  # Adjust time as needed
+
+      - name: checking pods
+        run: |
+          kubectl get pods
 
       - name: Deploy Backend
         run: |
           kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+
+      - name: Wait for services to stabilize
+        run: sleep 10  # Adjust time as needed
+
+      - name: checking pods
+        run: |
+          kubectl get pods
 
       - name: Generate SSL Certificate
         run: |

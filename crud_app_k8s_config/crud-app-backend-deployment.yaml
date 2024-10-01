@@ -76,7 +76,7 @@ spec:
         - containerPort: 8000
         env:
         - name: MONGO_URI
-          value: mongodb://crud-app-mongodb-0.mongo-service:27017,crud-app-mongodb-1.mongo-service:27017,crud-app-mongodb-2.mongo-service:27017/crud_app_db?replicaSet=rs0
+          value: mongodb://husnain:35202@crud-app-mongodb-0.mongo-service:27017,crud-app-mongodb-1.mongo-service:27017,crud-app-mongodb-2.mongo-service:27017/crud_app_db?replicaSet=rs0
         - name: USER_NAME
           valueFrom:
             secretKeyRef:

@@ -64,8 +64,9 @@ jobs:
       - name: Check MongoDB Pod Status
         run: |
           kubectl get pods
+
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 120  # Increase the sleep time to 120 seconds
+        run: sleep 100  # Increase the sleep time to 120 seconds
 
 
       - name: Initialize MongoDB Replica Set
@@ -80,7 +81,7 @@ jobs:
           })'
 
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 60  # Adjust the sleep time as needed
+        run: sleep 30  # Adjust the sleep time as needed
 
       - name: check status of replica set
         run: |
@@ -94,9 +95,20 @@ jobs:
               pwd: '${{ env.MONGO_PASSWORD }}',
               roles: [{ role: 'readWrite', db: 'crud_app_db' }]
             });"
+
+      - name: Wait for MongoDB User creation stabilize
+        run: sleep 10  # Adjust the sleep time as needed
+
+      - name: Check MongoDB Users
+        run: |
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "use admin; db.getUsers();"
+      
+
+      - name: Wait for MongoDB User creation stabilize
+        run: sleep 5  # Adjust the sleep time as needed
       
       - name: Wait for services to stabilize
-        run: sleep 20  # Adjust time as needed
+        run: sleep 15  # Adjust time as needed
 
       - name: checking pods
         run: |
@@ -104,19 +116,42 @@ jobs:
 
       - name: Deploy Backend
         run: |
-          kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+
+      - name: Wait for All Backend Pods to be Running
+        run: |
+          echo "Waiting for all backend pods to be in the running state..."
+          # Wait for the deployment to be available
+          kubectl wait --for=condition=available --timeout=60s deployment/crud-app-backend
+          
+          # Wait for all pods to be in the "Running" state
+          kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=60s
 
       - name: Wait for services to stabilize
-        run: sleep 10  # Adjust time as needed
+        run: sleep 5  # Adjust time as needed
+
+      - name: Check Backend Logs
+        run: |
+          # Check the logs after confirming all pods are running
+          kubectl logs -l app=crud-app-backend
+
+      - name: Wait for services to stabilize
+        run: sleep 5  # Adjust time as needed
 
       - name: checking pods
         run: |
           kubectl get pods
-
-
-      - name: Generate SSL Certificate
+      - name: Run Migrations
         run: |
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
+          # Get the name of one running pod
+          POD_NAME=$(kubectl get pods -l app=crud-app-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | head -n 1)
+  
+          echo "Running migrations on pod: $POD_NAME"
+          kubectl exec -it $POD_NAME -- python manage.py migrate
+
+#      - name: Generate SSL Certificate
+#        run: |
+#          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
 
       - name: Deploy Ingress Controller
         run: |
@@ -133,9 +168,10 @@ jobs:
         run: |
           kubectl apply -f crud_app_k8s_config/ingress.yaml
 
-      - name: Wait for all pods to be ready
+      - name: Wait for Services to Stabilize
         run: |
-          kubectl wait --for=condition=ready pod --all --timeout=300s
+            # You can wait specifically for your backend service to be ready
+            kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
 
       - name: Get all resources
         run: |
@@ -147,27 +183,28 @@ jobs:
           kubectl get ingress -A
 
       - name: Wait for services to stabilize
-        run: sleep 60  # Adjust time as needed
+        run: sleep 30  # Adjust time as needed
 
       - name: Test Backend Service directly
         run: |
           kubectl port-forward service/crud-app-backend-service 8000:8000 &
           sleep 5
-          curl http://localhost:8000/healthcheck
+          curl http://localhost:8000/api/healthcheck/
+      
 
       - name: Test Ingress Setup
         run: |
-          # Wait for ingress to get an IP
-          until [ -n "$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" ]; do
-            echo "Waiting for ingress to get an IP..."
-            sleep 5
-          done
-          
-          # Get the ingress IP
-          INGRESS_IP=$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          
-          # Test the endpoint
-          curl -H "Host: crud-app.local" http://$INGRESS_IP/healthcheck
+            # Wait for ingress to get an IP
+            until [ -n "$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" ]; do
+              echo "Waiting for ingress to get an IP..."
+              sleep 5
+            done
+            
+            # Get the ingress IP
+            INGRESS_IP=$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            
+            # Test the healthcheck endpoint
+            curl -H "Host: crud-app.local" http://$INGRESS_IP/api/healthcheck/
 
 #name: CI/CD Pipeline
 #

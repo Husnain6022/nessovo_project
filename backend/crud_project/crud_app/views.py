@@ -5,7 +5,7 @@ from .models import Item
 from .serializers import ItemSerializer
 from rest_framework.permissions import IsAuthenticated  # Import IsAuthenticated
 from rest_framework.authentication import TokenAuthentication  # Import TokenAuthentication
-
+from django.http import JsonResponse
 
 class ItemViewAPI(APIView):
     authentication_classes = [TokenAuthentication]
@@ -158,3 +158,7 @@ class ItemViewAPI(APIView):
                 {"message": "Something went wrong: " + str(e), "data": {}},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+def healthcheck(request):
+    return JsonResponse({"status": "healthy"})

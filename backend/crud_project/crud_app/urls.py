@@ -8,4 +8,5 @@ urlpatterns = [
     path('put_update_items/', ItemViewAPI.as_view()),
     path('patch_get_items/', ItemViewAPI.as_view()),
     path('delete_items/', ItemViewAPI.as_view()),
+    path('healthcheck/', healthcheck, name='healthcheck'),
 ]

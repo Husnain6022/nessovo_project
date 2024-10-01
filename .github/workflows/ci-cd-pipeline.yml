@@ -3,10 +3,7 @@ name: CI/CD Pipeline
 on:
   push:
     branches:
-      - main
-  pull_request:
-    branches:
-      - main
+      - master
 
 jobs:
   build:
@@ -14,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}  # Add this in GitHub secrets
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}  # Add this in GitHub secrets
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
       IMAGE_NAME: husnain844/crud_app-backend
 
     steps:
@@ -40,22 +37,70 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}  # Add your K8s config as a secret
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      MONGO_USER: ${{ secrets.MONGO_USER }}           # Injecting GitHub Secret for Mongo User
+      MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}   # Injecting GitHub Secret for Mongo Password
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up Kubectl
-        uses: azure/setup-kubectl@v1
-        with:
-          version: v1.22.0
-
-      - name: Configure kubectl
+      - name: Set up KinD Cluster
         run: |
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > $HOME/.kube/config
+          kind create cluster --config ./crud_app_k8s_config/kind-config.yaml --name crud-app-cluster
 
-      - name: Deploy to Kubernetes
+      - name: Apply ConfigMap and Secrets
         run: |
-          kubectl apply -f crud_app_k8s_config/backend-deployment.yaml
-          kubectl apply -f crud_app_k8s_config/backend-service.yaml
+          kubectl apply -f crud_app_k8s_config/app-config-configmap.yaml
+          kubectl apply -f crud_app_k8s_config/app-secret-secretmap.yaml
+
+      - name: Deploy MongoDB
+        run: |
+          kubectl apply -f crud_app_k8s_config/crud-app-mongodb-deployment.yaml
+
+      - name: Initialize MongoDB Replica Set
+        run: |
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.initiate({
+            _id: "rs0",
+            members: [
+              { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017" },
+              { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017" },
+              { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017" }
+            ]
+          })'
+
+      - name: Wait for MongoDB Replica Set to stabilize
+        run: sleep 60  # Adjust the sleep time as needed
+
+      - name: Create MongoDB User
+        run: |
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "use admin;
+            db.createUser({ 
+              user: '${{ env.MONGO_USER }}',
+              pwd: '${{ env.MONGO_PASSWORD }}',
+              roles: [{ role: 'readWrite', db: 'crud_app_db' }]
+            });"
+
+      - name: Deploy Backend
+        run: |
+          kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+
+      - name: Generate SSL Certificate
+        run: |
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
+
+      - name: Create SSL Certificate Secret
+        run: |
+          kubectl create secret tls ingress-tls --key mykey.key --cert mycert.crt
+
+      - name: Deploy Ingress Controller
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+
+      - name: Configure Ingress
+        run: |
+          kubectl apply -f crud_app_k8s_config/ingress.yaml
+
+      - name: Test Ingress Setup
+        run: |
+          curl http://127.0.0.1/healthcheck

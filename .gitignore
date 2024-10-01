@@ -21,6 +21,7 @@ backend/crud_project/crud_project/settings.py
 crud_app_k8s_config/app-secret-secretmap.yaml
 
 
+
 # Ignore logs
 *.log
 

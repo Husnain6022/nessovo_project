@@ -154,7 +154,7 @@ jobs:
         run: |
           kubectl get pods
       
-            - name: Deploy Backend
+      - name: Deploy Backend
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
 

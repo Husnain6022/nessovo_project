@@ -74,14 +74,14 @@ jobs:
           kubectl get pods
 
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 40  # Increase the sleep time to 120 seconds
+        run: sleep 60  # Increase the sleep time to 120 seconds
 
       - name: Check MongoDB Pod Status
         run: |
           kubectl get pods
 
       - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 40  # Increase the sleep time to 120 seconds
+        run: sleep 60  # Increase the sleep time to 120 seconds
 
       - name: Check MongoDB Pod Status
         run: |

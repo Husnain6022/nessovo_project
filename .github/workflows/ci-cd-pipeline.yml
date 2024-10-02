@@ -157,29 +157,77 @@ jobs:
 
       - name: Verify MongoDB Authentication
         run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+          db = db.getSiblingDB("admin");
           try {
-          use admin;
-          db.auth('${{ secrets.MONGO_USER }}', '${{ secrets.MONGO_PASSWORD }}');
-          print('Authentication successful');
+            const result = db.auth("${{ secrets.MONGO_USER }}", "${{ secrets.MONGO_PASSWORD }}");
+            if (result) {
+              print("Authentication successful");
+            } else {
+              print("Authentication failed");
+              quit(1);
+            }
           } catch (e) {
-          print('Authentication failed: ' + e);
-          quit(1);
-          }"
+            print("Authentication failed: " + e);
+            quit(1);
+          }
+          '
           
-            # Add a verification step to check if authentication actually worked
+        # Add a verification step to check if authentication actually worked
       - name: Verify Database Access
         run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
-          try {
-            use crud_app_db;
-            db.runCommand({ connectionStatus: 1 });
-            print('Database access verified');
-          } catch (e) {
-            print('Database access failed: ' + e);
-            quit(1);
-          }"
+            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+            db = db.getSiblingDB("crud_app_db");
+            try {
+              const status = db.runCommand({ connectionStatus: 1 });
+              print("Connection status:");
+              printjson(status);
+            
+              if (status.ok) {
+                print("Database access verified");
+              } else {
+                print("Database access failed");
+                quit(1);
+              }
+            } catch (e) {
+              print("Database access check failed: " + e);
+              quit(1);
+            }
+            '
+      - name: Check MongoDB Users
+        run: |
+            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+            db = db.getSiblingDB("admin");
+            try {
+              print("Current database users:");
+              const users = db.getUsers();
+              printjson(users);
+            
+              print("\nCurrent user roles:");
+              const roles = db.getRoles({showBuiltinRoles: true});
+              printjson(roles);
+            } catch (e) {
+              print("Error checking users: " + e);
+              quit(1);
+            }
+            '
 
+      - name: Verify MongoDB Replica Set Status
+        run: |
+              kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+              try {
+                print("Replica set status:");
+                const rsStatus = rs.status();
+                printjson(rsStatus);
+          
+                print("\nReplication configuration:");
+                const rsConf = rs.conf();
+                printjson(rsConf);
+              } catch (e) {
+                print("Error checking replica set: " + e);
+                quit(1);
+              }
+              '
         # Add a step to check MongoDB logs for any authentication issues
       - name: Check MongoDB Logs
         run: |

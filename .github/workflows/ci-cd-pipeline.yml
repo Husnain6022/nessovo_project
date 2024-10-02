@@ -116,6 +116,97 @@ jobs:
           echo "Mongo User: '${{ secrets.MONGO_USER }}'"
           echo "Mongo Password: '${{ secrets.MONGO_PASSWORD }}'"
 
+      - name: Check MongoDB Mode
+        run: |
+          echo "Checking MongoDB server status..."
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+          try {
+            const status = db.serverStatus();
+            printjson(status.repl);
+            print("\nProcess info:");
+            printjson(status.process);
+          } catch (e) {
+            print("Error checking server status: " + e);
+          }
+          '
+      - name: Create MongoDB Admin User
+        run: |
+          echo "Creating MongoDB admin user..."
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+          db = db.getSiblingDB("admin");
+          try {
+            db.createUser({
+              user: "${{ secrets.MONGO_USER }}",
+              pwd: "${{ secrets.MONGO_PASSWORD }}",
+              roles: [
+                { role: "userAdminAnyDatabase", db: "admin" },
+                { role: "readWriteAnyDatabase", db: "admin" },
+                { role: "dbAdminAnyDatabase", db: "admin" }
+              ]
+            });
+            print("User creation successful");
+          } catch (e) {
+            if (e.codeName === "DuplicateKey") {
+              print("User already exists, updating...");
+              db.updateUser("${{ secrets.MONGO_USER }}", {
+                roles: [
+                  { role: "userAdminAnyDatabase", db: "admin" },
+                  { role: "readWriteAnyDatabase", db: "admin" },
+                  { role: "dbAdminAnyDatabase", db: "admin" }
+                ]
+              });
+              print("User updated successfully");
+            } else {
+              print("Error creating user: " + e);
+            }
+          }
+          '
+      - name: Test Authentication
+        run: |
+            echo "Testing authentication..."
+            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+            try {
+              db = db.getSiblingDB("admin");
+              print("Current database: " + db.getName());
+            
+              const result = db.auth({
+                user: "${{ secrets.MONGO_USER }}",
+                pwd: "${{ secrets.MONGO_PASSWORD }}",
+                mechanism: "SCRAM-SHA-1"
+              });
+            
+              if (result) {
+                print("Authentication successful");
+                print("\nCurrent user privileges:");
+                printjson(db.runCommand({ connectionStatus: 1, showPrivileges: true }));
+              } else {
+                print("Authentication failed without throwing error");
+                quit(1);
+              }
+            } catch (e) {
+              print("Authentication error details:");
+              printjson(e);
+              quit(1);
+            }
+            '
+      - name: Check MongoDB Logs
+        run: |
+          echo "Checking MongoDB logs..."
+          kubectl logs crud-app-mongodb-0 | grep -i "auth"
+
+      - name: Verify User Creation
+        run: |
+            echo "Verifying user creation..."
+            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+            db = db.getSiblingDB("admin");
+            try {
+              const users = db.getUsers();
+              print("Current users:");
+              printjson(users);
+            } catch (e) {
+              print("Error getting users: " + e);
+            }
+            '
       - name: Create MongoDB User
         run: |
             kubectl exec crud-app-mongodb-0 -- mongosh --eval "

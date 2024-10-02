@@ -86,12 +86,12 @@ jobs:
         run: |
           kubectl get pods
 
-      - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 20  # Increase the sleep time to 120 seconds
-
-      - name: Check MongoDB Pod Status
-        run: |
-          kubectl get pods
+#      - name: Wait for MongoDB Replica Set to stabilize
+#        run: sleep 20  # Increase the sleep time to 120 seconds
+#
+#      - name: Check MongoDB Pod Status
+#        run: |
+#          kubectl get pods
 
       - name: Initialize MongoDB Replica Set
         run: |
@@ -111,26 +111,42 @@ jobs:
         run: |
           kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.status()'
 
+      - name: Debug MongoDB User Creation
+        run: |
+          echo "Mongo User: '${{ secrets.MONGO_USER }}'"
+          echo "Mongo Password: '${{ secrets.MONGO_PASSWORD }}'"
+
       - name: Create MongoDB User
         run: |
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval "
-            use admin;
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          use admin;
+          try {
             db.createUser({
               user: '${{ secrets.MONGO_USER }}',
               pwd: '${{ secrets.MONGO_PASSWORD }}',
               roles: [{ role: 'readWrite', db: 'crud_app_db' }]
-            });"
+            });
+            print('User creation successful');
+          } catch (e) {
+            print('User creation failed: ' + e);
+          }"
+      
 
       - name: Wait for MongoDB User creation stabilize
         run: sleep 10  # Adjust the sleep time as needed
 
       - name: Check MongoDB Users
         run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval "use admin; db.getUsers();"
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          use admin;
+          try {
+            var users = db.getUsers();
+            printjson(users);
+          } catch (e) {
+            print('Failed to get users: ' + e);
+          }"
       
-
-      - name: Wait for MongoDB User creation stabilize
-        run: sleep 5  # Adjust the sleep time as needed
+      
       
       - name: Wait for services to stabilize
         run: sleep 15  # Adjust time as needed
@@ -153,14 +169,6 @@ jobs:
       - name: Check Backend Pod Status
         run: |
           kubectl get pods
-      
-      - name: Deploy Backend
-        run: |
-            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
 
       - name: Wait for Backend Replica Set to stabilize
         run: sleep 20  # Increase the sleep time to 120 seconds
@@ -169,21 +177,9 @@ jobs:
         run: |
           kubectl get pods
 
-      - name: Deploy Backend
-        run: |
-            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
-
       - name: Check Backend Pod Status
         run: |
           kubectl get pods
-
-      - name: Wait for Backend Replica Set to stabilize
-        run: sleep 20  # Increase the sleep time to 120 seconds
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
-      
 
       - name: Check Backend Logs
         run: |
@@ -196,13 +192,15 @@ jobs:
       - name: checking pods
         run: |
           kubectl get pods
+
       - name: Run Migrations
         run: |
           # Get the name of one running pod
           POD_NAME=$(kubectl get pods -l app=crud-app-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | head -n 1)
-  
+
           echo "Running migrations on pod: $POD_NAME"
-          kubectl exec -it $POD_NAME -- python manage.py migrate
+          # Run migrations on the selected pod
+          kubectl exec $POD_NAME -- python manage.py migrate
 
 #      - name: Generate SSL Certificate
 #        run: |

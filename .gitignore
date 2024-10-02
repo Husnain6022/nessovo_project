@@ -33,7 +33,7 @@ crud_app_k8s_config/app-secret-secretmap.yaml
 .vscode/
 
 # Ignore all yaml files in Kubernetes config folder
-crud_app_k8s_config/*.yml
+#crud_app_k8s_config/*.yml
 
 # Optional: Ignore migrations if you don't want to track them
 */migrations/*

@@ -454,18 +454,41 @@ jobs:
 
       - name: Test Ingress Setup
         run: |
-            # Wait for ingress to get an IP
-            until [ -n "$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" ]; do
-              echo "Waiting for ingress to get an IP..."
-              sleep 5
-            done
-            
-            # Get the ingress IP
-            INGRESS_IP=$(kubectl get ingress crud-app-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-            
-            # Test the healthcheck endpoint
-            curl -H "Host: crud-app.local" http://$INGRESS_IP/api/healthcheck/
+          # Get the NodePort of the ingress-nginx-controller
+          INGRESS_HTTP_PORT=$(kubectl -n ingress-nginx get service ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
 
+          # Get the internal IP of the Kind node
+          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+          echo "Testing Ingress through NodePort $INGRESS_HTTP_PORT on node $NODE_IP"
+
+          # Add DNS entry to /etc/hosts
+          echo "$NODE_IP crud-app.local" | sudo tee -a /etc/hosts
+
+          # Test with retries
+          for i in {1..6}; do
+            echo "Attempt $i: Testing Ingress..."
+            if curl -v -H "Host: crud-app.local" "http://$NODE_IP:$INGRESS_HTTP_PORT/api/healthcheck/"; then
+              echo "Ingress test successful!"
+              exit 0
+            fi
+            echo "Attempt failed, waiting 10 seconds..."
+            sleep 10
+          done
+
+          # If we get here, all attempts failed
+          echo "Ingress test failed after all attempts. Collecting debug information..."
+
+          echo "=== Ingress Controller Logs ==="
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
+
+          echo "=== Ingress Configuration ==="
+          kubectl get ingress crud-app-ingress -o yaml
+
+          echo "=== Backend Pod Logs ==="
+          kubectl logs -l app=crud-app-backend
+
+          exit 1
 #name: CI/CD Pipeline
 #
 #on:

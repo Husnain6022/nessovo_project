@@ -20,32 +20,24 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Docker
-        shell: pwsh
         run: |
           docker version
 
       - name: Debug Docker Username
-        shell: pwsh
         run: |
-          echo Docker Username: %DOCKER_USERNAME%
-
+          echo "Docker Username: $DOCKER_USERNAME"
 
       - name: Login to DockerHub
-        shell: pwsh
         run: |
-          echo %DOCKER_PASSWORD% > password.txt
-          docker login -u %DOCKER_USERNAME% --password-stdin < password.txt
-          del password.txt
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
       - name: Build and tag Docker image
-        shell: pwsh
         run: |
-          docker build -t %IMAGE_NAME%:latest -f ./backend/crud_project/Dockerfile ./backend/crud_project
+          docker build -t $IMAGE_NAME:latest -f ./backend/crud_project/Dockerfile ./backend/crud_project
 
       - name: Push Docker image to Docker Hub
-        shell: cmd
         run: |
-          docker push %IMAGE_NAME%:latest
+          docker push $IMAGE_NAME:latest
 
   deploy:
     name: Deploy to Kubernetes

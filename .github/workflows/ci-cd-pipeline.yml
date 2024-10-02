@@ -425,6 +425,11 @@ jobs:
               --for=condition=ready pod \
               --selector=app.kubernetes.io/component=controller \
               --timeout=300s
+            
+
+      - name: Wait for Ingress Controller to install
+        run: sleep 60
+
 
       - name: Configure Ingress
         run: |

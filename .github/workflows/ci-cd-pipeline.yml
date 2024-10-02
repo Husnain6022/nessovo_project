@@ -157,16 +157,64 @@ jobs:
 
       - name: Verify MongoDB Authentication
         run: |
-             - kubectl exec crud-app-mongodb-0 -- mongosh --eval "
-             - try {
-             - db.auth('${{ secrets.MONGO_USER }}', '${{ secrets.MONGO_PASSWORD }}');
-             - print('Authentication successful');
-             - } catch (e) {
-             - print('Authentication failed: ' + e);
-              quit(1);
-              }"
-      
-      
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          try {
+          use admin;
+          db.auth('${{ secrets.MONGO_USER }}', '${{ secrets.MONGO_PASSWORD }}');
+          print('Authentication successful');
+          } catch (e) {
+          print('Authentication failed: ' + e);
+          quit(1);
+          }"
+          
+            # Add a verification step to check if authentication actually worked
+      - name: Verify Database Access
+        run: |
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          try {
+            use crud_app_db;
+            db.runCommand({ connectionStatus: 1 });
+            print('Database access verified');
+          } catch (e) {
+            print('Database access failed: ' + e);
+            quit(1);
+          }"
+
+        # Add a step to check MongoDB logs for any authentication issues
+      - name: Check MongoDB Logs
+        run: |
+          echo "MongoDB logs:"
+          kubectl logs crud-app-mongodb-0
+
+      - name: Debug MongoDB Configuration
+        run: |
+          echo "Checking MongoDB configuration..."
+          
+          # Check if MongoDB is running
+          kubectl get pod crud-app-mongodb-0 -o wide
+          
+          # Check MongoDB status
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+          try {
+            print('MongoDB server status:');
+            printjson(db.serverStatus());
+            
+            print('\nReplica set status:');
+            printjson(rs.status());
+            
+            print('\nAuthentication mechanism:');
+            db.adminCommand( { getParameter: 1, authenticationMechanisms: 1 } );
+          } catch (e) {
+            print('Error getting MongoDB status: ' + e);
+          }"
+          
+          # Check environment variables
+          echo "Checking environment variables..."
+          kubectl exec crud-app-mongodb-0 -- env | grep MONGO
+          
+          # Check MongoDB configuration file
+          echo "Checking MongoDB configuration..."
+          kubectl exec crud-app-mongodb-0 -- cat /etc/mongod.conf || echo "Config file not found at default location"
       
       - name: Wait for services to stabilize
         run: sleep 15  # Adjust time as needed

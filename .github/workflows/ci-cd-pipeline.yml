@@ -452,11 +452,11 @@ jobs:
       - name: Wait for services to stabilize
         run: sleep 60  # Adjust time as needed
 
-#      - name: Test Backend Service directly
-#        run: |
-#          kubectl port-forward service/crud-app-backend-service 8000:8000 &
-#          sleep 5
-#          curl http://localhost:8000/api/healthcheck/
+      - name: Test Backend Service directly
+        run: |
+          kubectl port-forward service/crud-app-backend-service 8000:8000 &
+          sleep 5
+          curl http://localhost:8000/api/healthcheck/
 
 
       - name: Test Ingress Setup

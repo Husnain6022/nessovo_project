@@ -78,7 +78,7 @@ jobs:
           '
 
       - name: Add Extra Wait for Replica Set to Stabilize
-        run: sleep 15  # Add some delay to allow MongoDB to establish the replica set
+        run: sleep 5  # Add some delay to allow MongoDB to establish the replica set
 
       - name: Create MongoDB Admin User
         run: |

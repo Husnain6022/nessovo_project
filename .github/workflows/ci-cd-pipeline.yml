@@ -54,7 +54,12 @@ jobs:
 
       - name: Wait for All MongoDB Pods to be Ready
         run: |
-          kubectl wait --for=condition=ready pods -l app=crud-app-mongodb --timeout=300s
+          until [[ $(kubectl get pods -l app=crud-app-mongodb -o 'jsonpath={.items[*].status.containerStatuses[*].ready}' | grep -o "true" | wc -l) -eq 3 ]]; do
+            echo "Waiting for all MongoDB replicas to be ready..."
+            sleep 10
+          done
+          echo "All MongoDB replicas are ready!"
+      
 
       - name: Add Extra Wait Before Replica Set Initialization
         run: sleep 60  # Adjust the sleep time as needed for stabilization

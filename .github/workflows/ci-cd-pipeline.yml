@@ -52,10 +52,14 @@ jobs:
           kubectl create secret generic mongo-secret --from-literal=mongo-user="${{ secrets.MONGO_USER }}" --from-literal=mongo-password="${{ secrets.MONGO_PASSWORD }}"
           kubectl apply -f crud_app_k8s_config/crud-app-mongodb-deployment.yaml
 
-      - name: Wait for MongoDB Pods to be Ready
-        run: kubectl wait --for=condition=ready pod -l app=crud-app-mongodb --timeout=300s
+      - name: Wait for All MongoDB Pods to be Ready
+        run: |
+          kubectl wait --for=condition=ready pod -l app=crud-app-mongodb --timeout=300s
 
-      - name: Initialize MongoDB
+      - name: Add Extra Wait Before Replica Set Initialization
+        run: sleep 60  # Adjust the sleep time as needed for stabilization
+
+      - name: Initialize MongoDB Replica Set
         run: |
           kubectl exec crud-app-mongodb-0 -- mongosh --eval '
             rs.initiate({
@@ -66,29 +70,41 @@ jobs:
                 { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
               ]
             }, {force:true});
-            db = db.getSiblingDB("admin");
-            try {
-              db.createUser({
-                user: "${{ secrets.MONGO_USER }}",
-                pwd: "${{ secrets.MONGO_PASSWORD }}",
+          '
+
+      - name: Add Extra Wait for Replica Set to Stabilize
+        run: sleep 60  # Add some delay to allow MongoDB to establish the replica set
+
+      - name: Create MongoDB Admin User
+        run: |
+          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+          db = db.getSiblingDB("admin");
+          try {
+            db.createUser({
+              user: "${{ secrets.MONGO_USER }}",
+              pwd: "${{ secrets.MONGO_PASSWORD }}",
+              roles: [
+                { role: "userAdminAnyDatabase", db: "admin" },
+                { role: "readWriteAnyDatabase", db: "admin" },
+                { role: "dbAdminAnyDatabase", db: "admin" }
+              ]
+            });
+            print("User creation successful");
+          } catch (e) {
+            if (e.codeName === "DuplicateKey") {
+              db.updateUser("${{ secrets.MONGO_USER }}", {
                 roles: [
                   { role: "userAdminAnyDatabase", db: "admin" },
                   { role: "readWriteAnyDatabase", db: "admin" },
                   { role: "dbAdminAnyDatabase", db: "admin" }
                 ]
               });
-            } catch (e) {
-              if (e.codeName === "DuplicateKey") {
-                db.updateUser("${{ secrets.MONGO_USER }}", {
-                  roles: [
-                    { role: "userAdminAnyDatabase", db: "admin" },
-                    { role: "readWriteAnyDatabase", db: "admin" },
-                    { role: "dbAdminAnyDatabase", db: "admin" }
-                  ]
-                });
-              }
-            }'
-
+              print("User updated successfully");
+            } else {
+              print("Error creating user: " + e);
+            }
+          }'
+      
       - name: Deploy Backend
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml

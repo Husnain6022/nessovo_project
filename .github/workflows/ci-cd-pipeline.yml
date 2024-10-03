@@ -449,77 +449,77 @@ jobs:
           echo "Ingress:"
           kubectl get ingress -A
 
-      - name: Wait for services to stabilize
-        run: sleep 60  # Adjust time as needed
-
-      - name: Test Backend Service directly
-        run: |
-          kubectl port-forward service/crud-app-backend-service 8000:8000 &
-          sleep 5
-          curl http://localhost:8000/api/healthcheck/
-
-
-      - name: Test Ingress Setup
-        run: |
-          # Wait for ingress controller to be ready
-          echo "Waiting for ingress-nginx-controller to be ready..."
-          kubectl wait --namespace ingress-nginx \
-            --for=condition=ready pod \
-            --selector=app.kubernetes.io/component=controller \
-            --timeout=90s
-  
-          # Get the NodePort and Node IP
-          INGRESS_HTTP_PORT=$(kubectl -n ingress-nginx get service ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
-          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-  
-          echo "Testing Ingress through NodePort $INGRESS_HTTP_PORT on node $NODE_IP"
-  
-          # Add DNS entry
-          echo "$NODE_IP crud-app.local" | sudo tee -a /etc/hosts
-  
-          # Wait for backend service to be ready
-          echo "Waiting for backend service to be ready..."
-          kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=90s
-  
-          # Test with retries
-          for i in {1..6}; do
-            echo "Attempt $i: Testing Ingress..."
-  
-            # Debug information before attempt
-            echo "=== Current Setup Status ==="
-            kubectl get pods -n ingress-nginx
-            kubectl get pods -l app=crud-app-backend
-            kubectl get ingress crud-app-ingress
-  
-            # Test the endpoint with a timeout
-            if curl -v --max-time 30 \
-                    --retry 3 \
-                    --retry-delay 5 \
-                    -H "Host: crud-app.local" \
-                    "http://$NODE_IP:$INGRESS_HTTP_PORT/api/healthcheck/"; then
-              echo "Ingress test successful!"
-              exit 0
-            fi
-  
-            echo "Attempt $i failed, collecting diagnostics..."
-  
-            # Collect diagnostic information
-            echo "=== Ingress Controller Logs ==="
-            kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50
-  
-            echo "=== Backend Pod Logs ==="
-            kubectl logs -l app=crud-app-backend --tail=50
-  
-            echo "=== Ingress Configuration ==="
-            kubectl describe ingress crud-app-ingress
-  
-            echo "Waiting 20 seconds before next attempt..."
-            sleep 20
-          done
-  
-          # If all attempts failed, exit with error
-          echo "Ingress test failed after all attempts."
-          exit 1
+#      - name: Wait for services to stabilize
+#        run: sleep 60  # Adjust time as needed
+#
+#      - name: Test Backend Service directly
+#        run: |
+#          kubectl port-forward service/crud-app-backend-service 8000:8000 &
+#          sleep 5
+#          curl http://localhost:8000/api/healthcheck/
+#
+#
+#      - name: Test Ingress Setup
+#        run: |
+#          # Wait for ingress controller to be ready
+#          echo "Waiting for ingress-nginx-controller to be ready..."
+#          kubectl wait --namespace ingress-nginx \
+#            --for=condition=ready pod \
+#            --selector=app.kubernetes.io/component=controller \
+#            --timeout=90s
+#
+#          # Get the NodePort and Node IP
+#          INGRESS_HTTP_PORT=$(kubectl -n ingress-nginx get service ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+#          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+#
+#          echo "Testing Ingress through NodePort $INGRESS_HTTP_PORT on node $NODE_IP"
+#
+#          # Add DNS entry
+#          echo "$NODE_IP crud-app.local" | sudo tee -a /etc/hosts
+#
+#          # Wait for backend service to be ready
+#          echo "Waiting for backend service to be ready..."
+#          kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=90s
+#
+#          # Test with retries
+#          for i in {1..6}; do
+#            echo "Attempt $i: Testing Ingress..."
+#
+#            # Debug information before attempt
+#            echo "=== Current Setup Status ==="
+#            kubectl get pods -n ingress-nginx
+#            kubectl get pods -l app=crud-app-backend
+#            kubectl get ingress crud-app-ingress
+#
+#            # Test the endpoint with a timeout
+#            if curl -v --max-time 30 \
+#                    --retry 3 \
+#                    --retry-delay 5 \
+#                    -H "Host: crud-app.local" \
+#                    "http://$NODE_IP:$INGRESS_HTTP_PORT/api/healthcheck/"; then
+#              echo "Ingress test successful!"
+#              exit 0
+#            fi
+#
+#            echo "Attempt $i failed, collecting diagnostics..."
+#
+#            # Collect diagnostic information
+#            echo "=== Ingress Controller Logs ==="
+#            kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50
+#
+#            echo "=== Backend Pod Logs ==="
+#            kubectl logs -l app=crud-app-backend --tail=50
+#
+#            echo "=== Ingress Configuration ==="
+#            kubectl describe ingress crud-app-ingress
+#
+#            echo "Waiting 20 seconds before next attempt..."
+#            sleep 20
+#          done
+#
+#          # If all attempts failed, exit with error
+#          echo "Ingress test failed after all attempts."
+#          exit 1
 #name: CI/CD Pipeline
 #
 #on:

@@ -62,7 +62,7 @@ jobs:
       
 
       - name: Add Extra Wait Before Replica Set Initialization
-        run: sleep 60  # Adjust the sleep time as needed for stabilization
+        run: sleep 5  # Adjust the sleep time as needed for stabilization
 
       - name: Initialize MongoDB Replica Set
         run: |
@@ -78,7 +78,7 @@ jobs:
           '
 
       - name: Add Extra Wait for Replica Set to Stabilize
-        run: sleep 60  # Add some delay to allow MongoDB to establish the replica set
+        run: sleep 15  # Add some delay to allow MongoDB to establish the replica set
 
       - name: Create MongoDB Admin User
         run: |
@@ -114,6 +114,20 @@ jobs:
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
             kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
+
+      - name: Check Backend Logs
+        run: |
+          # Check the logs after confirming all pods are running
+          kubectl logs -l app=crud-app-backend
+
+      - name: Run Migrations
+        run: |
+          # Get the name of one running pod
+          POD_NAME=$(kubectl get pods -l app=crud-app-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | head -n 1)
+
+          echo "Running migrations on pod: $POD_NAME"
+          # Run migrations on the selected pod
+          kubectl exec $POD_NAME -- python manage.py migrate
 
       - name: Deploy Ingress Controller
         run: |

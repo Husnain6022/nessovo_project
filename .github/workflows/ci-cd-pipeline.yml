@@ -1,3 +1,4 @@
+Copy code
 name: CI/CD Pipeline
 
 on:
@@ -20,23 +21,15 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up Docker
-        run: |
-          docker version
-
-      - name: Debug Docker Username
-        run: |
-          echo "Docker Username: $DOCKER_USERNAME"
+        run: docker version
 
       - name: Login to DockerHub
         run: |
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-      - name: Build and tag Docker image
+      - name: Build and push Docker image
         run: |
           docker build -t $IMAGE_NAME:latest -f ./backend/crud_project/Dockerfile ./backend/crud_project
-
-      - name: Push Docker image to Docker Hub
-        run: |
           docker push $IMAGE_NAME:latest
 
   deploy:
@@ -52,402 +45,553 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up KinD Cluster
-        run: |
-          kind create cluster --config ./crud_app_k8s_config/kind-config.yaml --name crud-app-cluster
+        run: kind create cluster --config ./crud_app_k8s_config/kind-config.yaml --name crud-app-cluster
 
-      - name: Apply ConfigMap
+      - name: Set Up Kubernetes Resources
         run: |
           kubectl apply -f crud_app_k8s_config/app-config-configmap.yaml
-
-      - name: Create MongoDB Secret
-        run: |
-          kubectl create secret generic mongo-secret \
-            --from-literal=mongo-user="${{ secrets.MONGO_USER }}" \
-            --from-literal=mongo-password="${{ secrets.MONGO_PASSWORD }}"
-
-      - name: Deploy MongoDB
-        run: |
+          kubectl create secret generic mongo-secret --from-literal=mongo-user="${{ secrets.MONGO_USER }}" --from-literal=mongo-password="${{ secrets.MONGO_PASSWORD }}"
           kubectl apply -f crud_app_k8s_config/crud-app-mongodb-deployment.yaml
 
-      - name: Check MongoDB Pod Status
+      - name: Wait for MongoDB Pods to be Ready
+        run: kubectl wait --for=condition=ready pod -l app=crud-app-mongodb --timeout=300s
+
+      - name: Initialize MongoDB
         run: |
-          kubectl get pods
-
-      - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 60  # Increase the sleep time to 120 seconds
-
-      - name: Check MongoDB Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 60  # Increase the sleep time to 120 seconds
-
-      - name: Check MongoDB Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 60  # Increase the sleep time to 120 seconds
-
-      - name: Check MongoDB Pod Status
-        run: |
-          kubectl get pods
-
-
-      - name: Initialize MongoDB Replica Set
-        run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.initiate({
-            _id: "rs0",
-            members: [
-              { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017", priority: 2 },
-              { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017", priority: 1 },
-              { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
-            ]
-          }, {force:true})'
-
-      - name: Wait for MongoDB Replica Set to stabilize
-        run: sleep 20  # Adjust the sleep time as needed
-
-      - name: check status of replica set
-        run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.status()'
-
-      - name: Debug MongoDB User Creation
-        run: |
-          echo "Mongo User: '${{ secrets.MONGO_USER }}'"
-          echo "Mongo Password: '${{ secrets.MONGO_PASSWORD }}'"
-
-      - name: Check MongoDB Mode
-        run: |
-          echo "Checking MongoDB server status..."
           kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-          try {
-            const status = db.serverStatus();
-            printjson(status.repl);
-            print("\nProcess info:");
-            printjson(status.process);
-          } catch (e) {
-            print("Error checking server status: " + e);
-          }
-          '
-      - name: Create MongoDB Admin User
-        run: |
-          echo "Creating MongoDB admin user..."
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-          db = db.getSiblingDB("admin");
-          try {
-            db.createUser({
-              user: "${{ secrets.MONGO_USER }}",
-              pwd: "${{ secrets.MONGO_PASSWORD }}",
-              roles: [
-                { role: "userAdminAnyDatabase", db: "admin" },
-                { role: "readWriteAnyDatabase", db: "admin" },
-                { role: "dbAdminAnyDatabase", db: "admin" }
+            rs.initiate({
+              _id: "rs0",
+              members: [
+                { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017", priority: 2 },
+                { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017", priority: 1 },
+                { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
               ]
-            });
-            print("User creation successful");
-          } catch (e) {
-            if (e.codeName === "DuplicateKey") {
-              print("User already exists, updating...");
-              db.updateUser("${{ secrets.MONGO_USER }}", {
+            }, {force:true});
+            db = db.getSiblingDB("admin");
+            try {
+              db.createUser({
+                user: "${{ secrets.MONGO_USER }}",
+                pwd: "${{ secrets.MONGO_PASSWORD }}",
                 roles: [
                   { role: "userAdminAnyDatabase", db: "admin" },
                   { role: "readWriteAnyDatabase", db: "admin" },
                   { role: "dbAdminAnyDatabase", db: "admin" }
                 ]
               });
-              print("User updated successfully");
-            } else {
-              print("Error creating user: " + e);
-            }
-          }
-          '
-      - name: Test Authentication
-        run: |
-            echo "Testing authentication..."
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-            try {
-              db = db.getSiblingDB("admin");
-              print("Current database: " + db.getName());
-            
-              const result = db.auth({
-                user: "${{ secrets.MONGO_USER }}",
-                pwd: "${{ secrets.MONGO_PASSWORD }}",
-                mechanism: "SCRAM-SHA-1"
-              });
-            
-              if (result) {
-                print("Authentication successful");
-                print("\nCurrent user privileges:");
-                printjson(db.runCommand({ connectionStatus: 1, showPrivileges: true }));
-              } else {
-                print("Authentication failed without throwing error");
-                quit(1);
-              }
             } catch (e) {
-              print("Authentication error details:");
-              printjson(e);
-              quit(1);
-            }
-            '
-      - name: Check MongoDB Logs
-        run: |
-          echo "Checking MongoDB logs..."
-          kubectl logs crud-app-mongodb-0 | grep -i "auth"
-
-      - name: Verify User Creation
-        run: |
-            echo "Verifying user creation..."
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-            db = db.getSiblingDB("admin");
-            try {
-              const users = db.getUsers();
-              print("Current users:");
-              printjson(users);
-            } catch (e) {
-              print("Error getting users: " + e);
-            }
-            '
-      - name: Create MongoDB User
-        run: |
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval "
-            use admin;
-            try {
-              // Check if user already exists
-              let userExists = db.getUser('${{ secrets.MONGO_USER }}');
-              if (!userExists) {
-                db.createUser({
-                  user: '${{ secrets.MONGO_USER }}',
-                  pwd: '${{ secrets.MONGO_PASSWORD }}',
+              if (e.codeName === "DuplicateKey") {
+                db.updateUser("${{ secrets.MONGO_USER }}", {
                   roles: [
-                    { role: 'readWrite', db: 'crud_app_db' },
-                    { role: 'dbAdmin', db: 'crud_app_db' },
-                    { role: 'userAdmin', db: 'crud_app_db' }
+                    { role: "userAdminAnyDatabase", db: "admin" },
+                    { role: "readWriteAnyDatabase", db: "admin" },
+                    { role: "dbAdminAnyDatabase", db: "admin" }
                   ]
                 });
-                print('User creation successful');
-              } else {
-                print('User already exists');
               }
-            
-              // Verify user creation
-              let verifyUser = db.getUser('${{ secrets.MONGO_USER }}');
-              if (verifyUser) {
-                print('User verification successful');
-                printjson(verifyUser.roles);
-              } else {
-                throw new Error('User verification failed');
-              }
-            } catch (e) {
-              print('Operation failed: ' + e);
-              quit(1);
-            }"
-      
-
-      - name: Wait for MongoDB User creation stabilize
-        run: sleep 10  # Adjust the sleep time as needed
-
-      - name: Verify MongoDB Authentication
-        run: |
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-          db = db.getSiblingDB("admin");
-          try {
-            const result = db.auth("${{ secrets.MONGO_USER }}", "${{ secrets.MONGO_PASSWORD }}");
-            if (result) {
-              print("Authentication successful");
-            } else {
-              print("Authentication failed");
-              quit(1);
-            }
-          } catch (e) {
-            print("Authentication failed: " + e);
-            quit(1);
-          }
-          '
-          
-        # Add a verification step to check if authentication actually worked
-      - name: Verify Database Access
-        run: |
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-            db = db.getSiblingDB("crud_app_db");
-            try {
-              const status = db.runCommand({ connectionStatus: 1 });
-              print("Connection status:");
-              printjson(status);
-            
-              if (status.ok) {
-                print("Database access verified");
-              } else {
-                print("Database access failed");
-                quit(1);
-              }
-            } catch (e) {
-              print("Database access check failed: " + e);
-              quit(1);
-            }
-            '
-      - name: Check MongoDB Users
-        run: |
-            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-            db = db.getSiblingDB("admin");
-            try {
-              print("Current database users:");
-              const users = db.getUsers();
-              printjson(users);
-            
-              print("\nCurrent user roles:");
-              const roles = db.getRoles({showBuiltinRoles: true});
-              printjson(roles);
-            } catch (e) {
-              print("Error checking users: " + e);
-              quit(1);
-            }
-            '
-
-      - name: Verify MongoDB Replica Set Status
-        run: |
-              kubectl exec crud-app-mongodb-0 -- mongosh --eval '
-              try {
-                print("Replica set status:");
-                const rsStatus = rs.status();
-                printjson(rsStatus);
-          
-                print("\nReplication configuration:");
-                const rsConf = rs.conf();
-                printjson(rsConf);
-              } catch (e) {
-                print("Error checking replica set: " + e);
-                quit(1);
-              }
-              '
-        # Add a step to check MongoDB logs for any authentication issues
-      - name: Check MongoDB Logs
-        run: |
-          echo "MongoDB logs:"
-          kubectl logs crud-app-mongodb-0
-
-      - name: Debug MongoDB Configuration
-        run: |
-          echo "Checking MongoDB configuration..."
-          
-          # Check if MongoDB is running
-          kubectl get pod crud-app-mongodb-0 -o wide
-          
-          # Check MongoDB status
-          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
-          try {
-            print('MongoDB server status:');
-            printjson(db.serverStatus());
-            
-            print('\nReplica set status:');
-            printjson(rs.status());
-            
-            print('\nAuthentication mechanism:');
-            db.adminCommand( { getParameter: 1, authenticationMechanisms: 1 } );
-          } catch (e) {
-            print('Error getting MongoDB status: ' + e);
-          }"
-          
-          # Check environment variables
-          echo "Checking environment variables..."
-          kubectl exec crud-app-mongodb-0 -- env | grep MONGO
-          
-          # Check MongoDB configuration file
-          echo "Checking MongoDB configuration..."
-          kubectl exec crud-app-mongodb-0 -- cat /etc/mongod.conf || echo "Config file not found at default location"
-      
-      - name: Wait for services to stabilize
-        run: sleep 15  # Adjust time as needed
-
-      - name: checking pods
-        run: |
-          kubectl get pods
+            }'
 
       - name: Deploy Backend
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Wait for Backend Replica Set to stabilize
-        run: sleep 20  # Increase the sleep time to 120 seconds
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Wait for Backend Replica Set to stabilize
-        run: sleep 20  # Increase the sleep time to 120 seconds
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Check Backend Pod Status
-        run: |
-          kubectl get pods
-
-      - name: Check Backend Logs
-        run: |
-          # Check the logs after confirming all pods are running
-          kubectl logs -l app=crud-app-backend
-
-      - name: Wait for services to stabilize
-        run: sleep 5  # Adjust time as needed
-
-      - name: checking pods
-        run: |
-          kubectl get pods
-
-      - name: Run Migrations
-        run: |
-          # Get the name of one running pod
-          POD_NAME=$(kubectl get pods -l app=crud-app-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | head -n 1)
-
-          echo "Running migrations on pod: $POD_NAME"
-          # Run migrations on the selected pod
-          kubectl exec $POD_NAME -- python manage.py migrate
-
-#      - name: Generate SSL Certificate
-#        run: |
-#          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
+            kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
 
       - name: Deploy Ingress Controller
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-
-      - name: Wait for Ingress Controller to be ready
-        run: |
-            kubectl wait --namespace ingress-nginx \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/component=controller \
-              --timeout=300s
-            
-
-      - name: Wait for Ingress Controller to install
-        run: sleep 60
-
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
 
       - name: Configure Ingress
         run: |
           kubectl apply -f crud_app_k8s_config/ingress.yaml
+          kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
 
-      - name: Wait for Services to Stabilize
-        run: |
-            # You can wait specifically for your backend service to be ready
-            kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
 
-      - name: Get all resources
-        run: |
-          echo "Pods:"
-          kubectl get pods -A
-          echo "Services:"
-          kubectl get services -A
-          echo "Ingress:"
-          kubectl get ingress -A
+
+
+
+
+
+
+
+
+#
+#name: CI/CD Pipeline
+#
+#on:
+#  push:
+#    branches:
+#      - master
+#
+#jobs:
+#  build:
+#    name: Build and Push Docker Image
+#    runs-on: self-hosted
+#
+#    env:
+#      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+#      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+#      IMAGE_NAME: husnain844/crud_app-backend
+#
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v2
+#
+#      - name: Set up Docker
+#        run: |
+#          docker version
+#
+#      - name: Debug Docker Username
+#        run: |
+#          echo "Docker Username: $DOCKER_USERNAME"
+#
+#      - name: Login to DockerHub
+#        run: |
+#          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+#
+#      - name: Build and tag Docker image
+#        run: |
+#          docker build -t $IMAGE_NAME:latest -f ./backend/crud_project/Dockerfile ./backend/crud_project
+#
+#      - name: Push Docker image to Docker Hub
+#        run: |
+#          docker push $IMAGE_NAME:latest
+#
+#  deploy:
+#    name: Deploy to Kubernetes
+#    needs: build
+#    runs-on: self-hosted
+#
+#    env:
+#      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+#
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v2
+#
+#      - name: Set up KinD Cluster
+#        run: |
+#          kind create cluster --config ./crud_app_k8s_config/kind-config.yaml --name crud-app-cluster
+#
+#      - name: Apply ConfigMap
+#        run: |
+#          kubectl apply -f crud_app_k8s_config/app-config-configmap.yaml
+#
+#      - name: Create MongoDB Secret
+#        run: |
+#          kubectl create secret generic mongo-secret \
+#            --from-literal=mongo-user="${{ secrets.MONGO_USER }}" \
+#            --from-literal=mongo-password="${{ secrets.MONGO_PASSWORD }}"
+#
+#      - name: Deploy MongoDB
+#        run: |
+#          kubectl apply -f crud_app_k8s_config/crud-app-mongodb-deployment.yaml
+#
+#      - name: Check MongoDB Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Wait for MongoDB Replica Set to stabilize
+#        run: sleep 60  # Increase the sleep time to 120 seconds
+#
+#      - name: Check MongoDB Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Wait for MongoDB Replica Set to stabilize
+#        run: sleep 60  # Increase the sleep time to 120 seconds
+#
+#      - name: Check MongoDB Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Wait for MongoDB Replica Set to stabilize
+#        run: sleep 60  # Increase the sleep time to 120 seconds
+#
+#      - name: Check MongoDB Pod Status
+#        run: |
+#          kubectl get pods
+#
+#
+#      - name: Initialize MongoDB Replica Set
+#        run: |
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.initiate({
+#            _id: "rs0",
+#            members: [
+#              { _id: 0, host: "crud-app-mongodb-0.mongo-service:27017", priority: 2 },
+#              { _id: 1, host: "crud-app-mongodb-1.mongo-service:27017", priority: 1 },
+#              { _id: 2, host: "crud-app-mongodb-2.mongo-service:27017", priority: 1 }
+#            ]
+#          }, {force:true})'
+#
+#      - name: Wait for MongoDB Replica Set to stabilize
+#        run: sleep 20  # Adjust the sleep time as needed
+#
+#      - name: check status of replica set
+#        run: |
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval 'rs.status()'
+#
+#      - name: Debug MongoDB User Creation
+#        run: |
+#          echo "Mongo User: '${{ secrets.MONGO_USER }}'"
+#          echo "Mongo Password: '${{ secrets.MONGO_PASSWORD }}'"
+#
+#      - name: Check MongoDB Mode
+#        run: |
+#          echo "Checking MongoDB server status..."
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#          try {
+#            const status = db.serverStatus();
+#            printjson(status.repl);
+#            print("\nProcess info:");
+#            printjson(status.process);
+#          } catch (e) {
+#            print("Error checking server status: " + e);
+#          }
+#          '
+#      - name: Create MongoDB Admin User
+#        run: |
+#          echo "Creating MongoDB admin user..."
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#          db = db.getSiblingDB("admin");
+#          try {
+#            db.createUser({
+#              user: "${{ secrets.MONGO_USER }}",
+#              pwd: "${{ secrets.MONGO_PASSWORD }}",
+#              roles: [
+#                { role: "userAdminAnyDatabase", db: "admin" },
+#                { role: "readWriteAnyDatabase", db: "admin" },
+#                { role: "dbAdminAnyDatabase", db: "admin" }
+#              ]
+#            });
+#            print("User creation successful");
+#          } catch (e) {
+#            if (e.codeName === "DuplicateKey") {
+#              print("User already exists, updating...");
+#              db.updateUser("${{ secrets.MONGO_USER }}", {
+#                roles: [
+#                  { role: "userAdminAnyDatabase", db: "admin" },
+#                  { role: "readWriteAnyDatabase", db: "admin" },
+#                  { role: "dbAdminAnyDatabase", db: "admin" }
+#                ]
+#              });
+#              print("User updated successfully");
+#            } else {
+#              print("Error creating user: " + e);
+#            }
+#          }
+#          '
+#      - name: Test Authentication
+#        run: |
+#            echo "Testing authentication..."
+#            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#            try {
+#              db = db.getSiblingDB("admin");
+#              print("Current database: " + db.getName());
+#
+#              const result = db.auth({
+#                user: "${{ secrets.MONGO_USER }}",
+#                pwd: "${{ secrets.MONGO_PASSWORD }}",
+#                mechanism: "SCRAM-SHA-1"
+#              });
+#
+#              if (result) {
+#                print("Authentication successful");
+#                print("\nCurrent user privileges:");
+#                printjson(db.runCommand({ connectionStatus: 1, showPrivileges: true }));
+#              } else {
+#                print("Authentication failed without throwing error");
+#                quit(1);
+#              }
+#            } catch (e) {
+#              print("Authentication error details:");
+#              printjson(e);
+#              quit(1);
+#            }
+#            '
+#      - name: Check MongoDB Logs
+#        run: |
+#          echo "Checking MongoDB logs..."
+#          kubectl logs crud-app-mongodb-0 | grep -i "auth"
+#
+#      - name: Verify User Creation
+#        run: |
+#            echo "Verifying user creation..."
+#            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#            db = db.getSiblingDB("admin");
+#            try {
+#              const users = db.getUsers();
+#              print("Current users:");
+#              printjson(users);
+#            } catch (e) {
+#              print("Error getting users: " + e);
+#            }
+#            '
+#      - name: Create MongoDB User
+#        run: |
+#            kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+#            use admin;
+#            try {
+#              // Check if user already exists
+#              let userExists = db.getUser('${{ secrets.MONGO_USER }}');
+#              if (!userExists) {
+#                db.createUser({
+#                  user: '${{ secrets.MONGO_USER }}',
+#                  pwd: '${{ secrets.MONGO_PASSWORD }}',
+#                  roles: [
+#                    { role: 'readWrite', db: 'crud_app_db' },
+#                    { role: 'dbAdmin', db: 'crud_app_db' },
+#                    { role: 'userAdmin', db: 'crud_app_db' }
+#                  ]
+#                });
+#                print('User creation successful');
+#              } else {
+#                print('User already exists');
+#              }
+#
+#              // Verify user creation
+#              let verifyUser = db.getUser('${{ secrets.MONGO_USER }}');
+#              if (verifyUser) {
+#                print('User verification successful');
+#                printjson(verifyUser.roles);
+#              } else {
+#                throw new Error('User verification failed');
+#              }
+#            } catch (e) {
+#              print('Operation failed: ' + e);
+#              quit(1);
+#            }"
+#
+#
+#      - name: Wait for MongoDB User creation stabilize
+#        run: sleep 10  # Adjust the sleep time as needed
+#
+#      - name: Verify MongoDB Authentication
+#        run: |
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#          db = db.getSiblingDB("admin");
+#          try {
+#            const result = db.auth("${{ secrets.MONGO_USER }}", "${{ secrets.MONGO_PASSWORD }}");
+#            if (result) {
+#              print("Authentication successful");
+#            } else {
+#              print("Authentication failed");
+#              quit(1);
+#            }
+#          } catch (e) {
+#            print("Authentication failed: " + e);
+#            quit(1);
+#          }
+#          '
+#
+#        # Add a verification step to check if authentication actually worked
+#      - name: Verify Database Access
+#        run: |
+#            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#            db = db.getSiblingDB("crud_app_db");
+#            try {
+#              const status = db.runCommand({ connectionStatus: 1 });
+#              print("Connection status:");
+#              printjson(status);
+#
+#              if (status.ok) {
+#                print("Database access verified");
+#              } else {
+#                print("Database access failed");
+#                quit(1);
+#              }
+#            } catch (e) {
+#              print("Database access check failed: " + e);
+#              quit(1);
+#            }
+#            '
+#      - name: Check MongoDB Users
+#        run: |
+#            kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#            db = db.getSiblingDB("admin");
+#            try {
+#              print("Current database users:");
+#              const users = db.getUsers();
+#              printjson(users);
+#
+#              print("\nCurrent user roles:");
+#              const roles = db.getRoles({showBuiltinRoles: true});
+#              printjson(roles);
+#            } catch (e) {
+#              print("Error checking users: " + e);
+#              quit(1);
+#            }
+#            '
+#
+#      - name: Verify MongoDB Replica Set Status
+#        run: |
+#              kubectl exec crud-app-mongodb-0 -- mongosh --eval '
+#              try {
+#                print("Replica set status:");
+#                const rsStatus = rs.status();
+#                printjson(rsStatus);
+#
+#                print("\nReplication configuration:");
+#                const rsConf = rs.conf();
+#                printjson(rsConf);
+#              } catch (e) {
+#                print("Error checking replica set: " + e);
+#                quit(1);
+#              }
+#              '
+#        # Add a step to check MongoDB logs for any authentication issues
+#      - name: Check MongoDB Logs
+#        run: |
+#          echo "MongoDB logs:"
+#          kubectl logs crud-app-mongodb-0
+#
+#      - name: Debug MongoDB Configuration
+#        run: |
+#          echo "Checking MongoDB configuration..."
+#
+#          # Check if MongoDB is running
+#          kubectl get pod crud-app-mongodb-0 -o wide
+#
+#          # Check MongoDB status
+#          kubectl exec crud-app-mongodb-0 -- mongosh --eval "
+#          try {
+#            print('MongoDB server status:');
+#            printjson(db.serverStatus());
+#
+#            print('\nReplica set status:');
+#            printjson(rs.status());
+#
+#            print('\nAuthentication mechanism:');
+#            db.adminCommand( { getParameter: 1, authenticationMechanisms: 1 } );
+#          } catch (e) {
+#            print('Error getting MongoDB status: ' + e);
+#          }"
+#
+#          # Check environment variables
+#          echo "Checking environment variables..."
+#          kubectl exec crud-app-mongodb-0 -- env | grep MONGO
+#
+#          # Check MongoDB configuration file
+#          echo "Checking MongoDB configuration..."
+#          kubectl exec crud-app-mongodb-0 -- cat /etc/mongod.conf || echo "Config file not found at default location"
+#
+#      - name: Wait for services to stabilize
+#        run: sleep 15  # Adjust time as needed
+#
+#      - name: checking pods
+#        run: |
+#          kubectl get pods
+#
+#      - name: Deploy Backend
+#        run: |
+#            kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
+#
+#      - name: Check Backend Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Wait for Backend Replica Set to stabilize
+#        run: sleep 20  # Increase the sleep time to 120 seconds
+#
+#      - name: Check Backend Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Wait for Backend Replica Set to stabilize
+#        run: sleep 20  # Increase the sleep time to 120 seconds
+#
+#      - name: Check Backend Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Check Backend Pod Status
+#        run: |
+#          kubectl get pods
+#
+#      - name: Check Backend Logs
+#        run: |
+#          # Check the logs after confirming all pods are running
+#          kubectl logs -l app=crud-app-backend
+#
+#      - name: Wait for services to stabilize
+#        run: sleep 5  # Adjust time as needed
+#
+#      - name: checking pods
+#        run: |
+#          kubectl get pods
+#
+#      - name: Run Migrations
+#        run: |
+#          # Get the name of one running pod
+#          POD_NAME=$(kubectl get pods -l app=crud-app-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | head -n 1)
+#
+#          echo "Running migrations on pod: $POD_NAME"
+#          # Run migrations on the selected pod
+#          kubectl exec $POD_NAME -- python manage.py migrate
+#
+##      - name: Generate SSL Certificate
+##        run: |
+##          openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout mykey.key -out mycert.crt -subj "/CN=ingress-nginx-admission/O=My Company"
+#
+#      - name: Deploy Ingress Controller
+#        run: |
+#          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+#
+#      - name: Wait for Ingress Controller to be ready
+#        run: |
+#            kubectl wait --namespace ingress-nginx \
+#              --for=condition=ready pod \
+#              --selector=app.kubernetes.io/component=controller \
+#              --timeout=300s
+#
+#
+#      - name: Wait for Ingress Controller to install
+#        run: sleep 60
+#
+#
+#      - name: Configure Ingress
+#        run: |
+#          kubectl apply -f crud_app_k8s_config/ingress.yaml
+#
+#      - name: Wait for Services to Stabilize
+#        run: |
+#            # You can wait specifically for your backend service to be ready
+#            kubectl wait --for=condition=ready pod -l app=crud-app-backend --timeout=300s
+#
+#      - name: Get all resources
+#        run: |
+#          echo "Pods:"
+#          kubectl get pods -A
+#          echo "Services:"
+#          kubectl get services -A
+#          echo "Ingress:"
+#          kubectl get ingress -A
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #      - name: Wait for services to stabilize
 #        run: sleep 60  # Adjust time as needed

@@ -54,7 +54,7 @@ jobs:
 
       - name: Wait for All MongoDB Pods to be Ready
         run: |
-          kubectl wait --for=condition=ready pod -l app=crud-app-mongodb --timeout=300s
+          kubectl wait --for=condition=ready pods -l app=crud-app-mongodb --timeout=300s
 
       - name: Add Extra Wait Before Replica Set Initialization
         run: sleep 60  # Adjust the sleep time as needed for stabilization
@@ -104,7 +104,7 @@ jobs:
               print("Error creating user: " + e);
             }
           }'
-      
+
       - name: Deploy Backend
         run: |
             kubectl apply -f crud_app_k8s_config/crud-app-backend-deployment.yaml
